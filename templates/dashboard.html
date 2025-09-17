@@ -1,0 +1,28 @@
+{% extends "layout.html" %} {% block content %}
+<link
+  rel="stylesheet"
+  href="{{ url_for('static', filename='css/dashboard.css') }}"
+/>
+
+<h2>Welcome, {{ session['username'] }}! 👋</h2>
+<p>You are logged in as <b>{{ role }}</b>.</p>
+
+<div class="cards">
+  <!-- Notes Card -->
+  <a href="{{ url_for('notes') }}" class="card">
+    <img src="https://img.icons8.com/color/96/open-book.png" alt="Notes" />
+    <h3>Your Notes</h3>
+    <p>Upload and review your study materials.</p>
+  </a>
+
+  <!-- Announcements Card -->
+  <a href="{{ url_for('announcements') }}" class="card">
+    <img
+      src="https://img.icons8.com/color/96/teacher.png"
+      alt="Announcements"
+    />
+    <h3>Announcements</h3>
+    <p>See latest class and teacher updates.</p>
+  </a>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "layout.html" %} {% block content %}
+<h2>Notes</h2>
+
+<!-- Upload Form -->
+<form method="POST" enctype="multipart/form-data">
+  <input type="file" name="file" required />
+  <button type="submit" class="upload-btn">Upload File</button>
+</form>
+
+<!-- Notes List -->
+<div class="cards">
+  {% for note in files %}
+  <div class="card">
+    <!-- File download -->
+    <a href="{{ url_for('uploaded_file', filename=note[1]) }}">
+      <img src="https://img.icons8.com/color/48/file.png" />
+      <h3>{{ note[1] }}</h3>
+    </a>
+
+    <!-- File type badge -->
+    <span
+      class="badge {% if note[1].endswith('.pdf') %}pdf {% elif note[1].endswith('.doc') or note[1].endswith('.docx') %}doc {% else %}txt {% endif %}"
+    >
+      {{ note[1].split('.')[-1].upper() }}
+    </span>
+
+    <!-- Uploader -->
+    <p><small>Uploaded by: {{ note[2] }}</small></p>
+
+    <!-- Delete button (only for teacher or uploader) -->
+    {% if role == "teacher" or note[2] == session['username'] %}
+    <form
+      action="{{ url_for('delete_note', note_id=note[0]) }}"
+      method="POST"
+      style="display: inline"
+    >
+      <button type="submit" class="delete-btn">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

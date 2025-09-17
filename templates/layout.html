@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title or "Student Portal" }}</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <h2>GET UPDATED</h2>
+      <a href="{{ url_for('index') }}">🏠 Home</a>
+      <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
+      <a href="{{ url_for('notes') }}">📚 Notes</a>
+      <a href="{{ url_for('announcements') }}">📢 Announcements</a>
+      {% if 'username' in session %}
+      <a href="{{ url_for('logout') }}">🚪 Logout</a>
+      {% else %}
+      <a href="{{ url_for('login') }}">🔑 Login</a>
+      {% endif %}
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <h1>{{ title or "Portal" }}</h1>
+      </div>
+
+      <div class="top-search">
+        <input
+          id="site-search"
+          type="search"
+          placeholder="Search..."
+          autocomplete="off"
+        />
+        <div
+          id="search-results"
+          class="search-results"
+          aria-live="polite"
+          style="display: none"
+        ></div>
+      </div>
+
+      <script>
+        (function () {
+          const input = document.getElementById("site-search");
+          const box = document.getElementById("search-results");
+          if (!input || !box) return;
+          let t;
+          function esc(s) {
+            return String(s).replace(
+              /[&<>"']/g,
+              (c) =>
+                ({
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  '"': "&quot;",
+                  "'": "&#39;",
+                }[c])
+            );
+          }
+          function show(items) {
+            if (!items || items.length === 0) {
+              box.innerHTML = '<div class="sr-empty">No notes found</div>';
+              box.style.display = "block";
+              return;
+            }
+            box.innerHTML = items
+              .map(
+                (it) => `
+      <a class="sr-item" href="/uploads/${
+        it.title
+      }" target="_blank" rel="noopener">
+        <div class="sr-title">${esc(it.title)}</div>
+      </a>
+    `
+              )
+              .join("");
+            box.style.display = "block";
+          }
+
+          input.addEventListener("input", (e) => {
+            clearTimeout(t);
+            const q = e.target.value.trim();
+            if (!q) {
+              box.style.display = "none";
+              box.innerHTML = "";
+              return;
+            }
+            t = setTimeout(() => {
+              fetch("/search?q=" + encodeURIComponent(q))
+                .then((r) => r.json())
+                .then((data) => {
+                  if (Array.isArray(data)) show(data);
+                  else {
+                    console.error("Search returned error", data);
+                    box.innerHTML = '<div class="sr-empty">Search error</div>';
+                    box.style.display = "block";
+                  }
+                })
+                .catch((err) => {
+                  console.error("Search fetch error", err);
+                  box.innerHTML =
+                    '<div class="sr-empty">Search error — see console</div>';
+                  box.style.display = "block";
+                });
+            }, 220);
+          });
+
+          document.addEventListener("click", (ev) => {
+            if (!ev.target.closest(".top-search")) {
+              box.style.display = "none";
+            }
+          });
+        })();
+      </script>
+
+      {% block content %}{% endblock %}
+    </div>
+  </body>
+</html>

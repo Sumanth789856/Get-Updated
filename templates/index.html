@@ -1,0 +1,31 @@
+{% extends "layout.html" %} {% block content %}
+<h2>Explore the Portal</h2>
+<div class="cards">
+  <div class="card">
+    <img src="https://img.icons8.com/color/48/books.png" alt="Notes" />
+    <h3>Notes</h3>
+    <p>Access study materials and upload your files.</p>
+    <a href="{{ url_for('notes') }}" class="upload-btn">Go</a>
+  </div>
+
+  <div class="card">
+    <img
+      src="https://img.icons8.com/color/48/megaphone.png"
+      alt="Announcements"
+    />
+    <h3>Announcements</h3>
+    <p>Check latest updates and important notices.</p>
+    <a href="{{ url_for('announcements') }}" class="upload-btn">Go</a>
+  </div>
+
+  <div class="card">
+    <img
+      src="https://img.icons8.com/color/48/student-male.png"
+      alt="Dashboard"
+    />
+    <h3>Dashboard</h3>
+    <p>View your profile, subjects, and recent activity.</p>
+    <a href="{{ url_for('dashboard') }}" class="upload-btn">Go</a>
+  </div>
+</div>
+{% endblock %}

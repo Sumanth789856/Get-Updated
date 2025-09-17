@@ -1,0 +1,340 @@
+/* full replacement with enhanced styles for register/login */
+:root {
+  --bg-start: #071428;
+  --bg-end: #071e36;
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --accent: #f5f6f8;
+  --accent-2: #7bffd1;
+  --muted: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --radius: 14px;
+  --max-width: 420px;
+  --input-height: 44px;
+}
+
+/* page background */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial;
+  background: radial-gradient(
+      1200px 600px at 10% 10%,
+      rgba(79, 156, 255, 0.04),
+      transparent 8%
+    ),
+    linear-gradient(180deg, var(--bg-start), var(--bg-end));
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* container */
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+}
+
+/* card */
+.auth-form {
+  width: 100%;
+  max-width: var(--max-width);
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.01)
+  );
+  border-radius: var(--radius);
+  padding: 32px 28px;
+  box-shadow: 0 10px 40px rgba(2, 6, 23, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  overflow: visible; /* changed so the top badge is not clipped */
+}
+
+/* decorative accent strip */
+.auth-form::before {
+  content: "";
+  position: absolute;
+  left: -40%;
+  top: -30%;
+  width: 200%;
+  height: 180%;
+  background: radial-gradient(
+      circle at 30% 30%,
+      rgba(79, 156, 255, 0.06),
+      transparent 8%
+    ),
+    radial-gradient(
+      circle at 70% 70%,
+      rgba(123, 208, 255, 0.04),
+      transparent 10%
+    );
+  transform: rotate(-12deg);
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  opacity: 0.9;
+}
+
+/* heading */
+.auth-form h2 {
+  margin: 0 0 18px 0;
+  font-size: 20px;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  text-align: center;
+  position: relative;
+  z-index: 2;
+  -webkit-background-clip: text;
+  background-clip: text;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+/* subtitle uses data-subtitle attribute (falls back to nothing) */
+.auth-form h2[data-subtitle]::after {
+  content: attr(data-subtitle);
+  display: block;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 500;
+  margin-top: 8px;
+  letter-spacing: 0.2px;
+  z-index: 2;
+  -webkit-text-fill-color: unset;
+  background: none;
+}
+
+/* inputs (includes email) */
+.auth-form input[type="text"],
+.auth-form input[type="password"],
+.auth-form input[type="email"] {
+  width: 100%;
+  display: block;
+  height: var(--input-height);
+  padding: 10px 14px;
+  margin: 12px 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.28),
+    rgba(255, 255, 255, 0.01)
+  );
+  color: #fff;
+  outline: none;
+  transition: box-shadow 200ms ease, transform 120ms ease, border-color 120ms;
+  font-size: 14px;
+  box-shadow: inset 0 -6px 30px rgba(2, 6, 23, 0.35);
+}
+
+/* placeholder */
+.auth-form input::placeholder {
+  color: rgba(255, 255, 255, 0.52);
+  font-weight: 500;
+}
+
+/* focus state */
+.auth-form input:focus {
+  box-shadow: 0 10px 30px rgba(79, 156, 255, 0.12),
+    inset 0 -6px 20px rgba(79, 156, 255, 0.02);
+  transform: translateY(-2px);
+  border-color: rgba(79, 156, 255, 0.6);
+}
+
+/* small inline label hint using aria-placeholder fallback */
+.auth-form input[placeholder="Email"] {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.02)
+  );
+}
+
+/* submit button */
+.auth-btn {
+  width: 100%;
+  padding: 12px 14px;
+  margin-top: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #052033;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, opacity 120ms;
+  box-shadow: 0 12px 30px rgba(79, 156, 255, 0.18);
+  height: 44px;
+  letter-spacing: 0.4px;
+}
+
+/* button hover */
+.auth-btn:hover {
+  transform: translateY(-4px);
+  opacity: 0.98;
+  box-shadow: 0 18px 44px rgba(79, 156, 255, 0.22);
+}
+
+/* subtle footer row */
+.auth-form p {
+  margin: 12px 0 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  z-index: 2;
+}
+
+/* links */
+.auth-form a {
+  color: var(--accent-2);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+/* small helper text for inputs (if added later) */
+.helper-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 6px;
+}
+
+/* responsive */
+@media (max-width: 540px) {
+  .auth-form {
+    padding: 20px;
+    border-radius: 12px;
+    margin: 16px;
+  }
+  .auth-form h2 {
+    font-size: 18px;
+  }
+  :root {
+    --max-width: 360px;
+  }
+}
+
+/* tiny accessibility focus outline */
+.auth-form input:focus,
+.auth-btn:focus {
+  outline: 3px solid rgba(79, 156, 255, 0.08);
+  outline-offset: 2px;
+}
+
+.top-search {
+  position: relative;
+}
+#site-search {
+  width: 220px;
+  padding: 8px 12px;
+  border-radius: 20px;
+  border: 0;
+  background: #fff;
+  color: #042033;
+}
+.search-results {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  width: 320px;
+  max-height: 320px;
+  overflow: auto;
+  background: rgba(2, 8, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  display: none;
+  z-index: 1200;
+  box-shadow: 0 8px 30px rgba(2, 6, 23, 0.6);
+}
+.search-results .sr-item {
+  display: block;
+  padding: 10px 12px;
+  color: #dbeefb;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.search-results .sr-item:hover {
+  background: rgba(79, 156, 255, 0.06);
+}
+.sr-title {
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.sr-excerpt {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.sr-empty {
+  padding: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Login badge on top border (only for forms with .login) */
+.auth-form.login {
+  position: relative;
+  padding-top: 54px; /* room for the badge */
+}
+
+/* move the heading into a pill overlapping the top border */
+.auth-form.login h2 {
+  position: absolute;
+  top: -26px; /* show fully above the card */
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 28px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #052033;
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.45);
+  z-index: 10;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  background-clip: unset;
+  background-clip: unset;
+  -webkit-text-fill-color: unset;
+}
+
+/* hide subtitle inside the badge form (if any) */
+.auth-form.login h2::after {
+  display: none;
+}
+
+/* add a little top padding so content doesn't overlap the badge */
+.auth-form.login {
+  padding-top: 48px;
+}
+
+/* If you want the register form to also have the same badge style,
+   add class="auth-form register" to the register form element. */
+.auth-form.register {
+  overflow: visible;
+  padding-top: 54px;
+}
+.auth-form.register h2 {
+  position: absolute;
+  top: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 28px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #052033;
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.45);
+  z-index: 10;
+  -webkit-background-clip: unset;
+  -webkit-text-fill-color: unset;
+}
