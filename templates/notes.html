@@ -1,10 +1,60 @@
 {% extends "layout.html" %} {% block content %}
 <h2>Notes</h2>
-
+<link
+  rel="stylesheet"
+  href="{{ url_for('static', filename='css/index.css') }}"
+/>
 <!-- Upload Form -->
-<form method="POST" enctype="multipart/form-data">
-  <input type="file" name="file" required />
-  <button type="submit" class="upload-btn">Upload File</button>
+<form
+  method="POST"
+  enctype="multipart/form-data"
+  style="
+    background: #f9f9f9;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    width: 350px;
+    margin: 20px auto;
+    text-align: center;
+    font-family: Arial, sans-serif;
+  "
+>
+  <h3 style="margin-bottom: 15px; color: #333">Upload Your File</h3>
+
+  <input
+    type="file"
+    name="file"
+    required
+    style="
+      display: block;
+      margin: 10px auto 20px auto;
+      padding: 10px;
+      border: 2px dashed #4caf50;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 90%;
+      background: #fff;
+    "
+  />
+
+  <button
+    type="submit"
+    style="
+      background: linear-gradient(90deg, #4caf50, #45a049);
+      border: none;
+      color: white;
+      padding: 12px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    "
+  >
+    Upload File
+  </button>
 </form>
 
 <!-- Notes List -->
