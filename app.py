@@ -3,6 +3,10 @@ import os
 import sqlite3
 from datetime import datetime
 from sqlalchemy import or_
+from dotenv import load_dotenv  # <-- NEW
+
+# ---------- LOAD ENV ----------
+load_dotenv()  
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
