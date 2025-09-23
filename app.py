@@ -6,89 +6,90 @@ import psycopg2
 from psycopg2 import Error
 
 
+
+
 # ---------- LOAD ENV ----------
-load_dotenv()  
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 
 # ---------- CONFIG ----------
 UPLOAD_FOLDER = "uploads"
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# ---------- Connection parameters ----------
-app.config['DBNAME'] = os.getenv('DBNAME', 'neondb')
-app.config['USER'] = os.getenv('DBUSER', 'neondb_owner')
-app.config['PASSWORD'] = os.getenv('DBPASSWORD', 'npg_amlCENp4dF7Q')
-app.config['HOST'] = os.getenv('DBHOST', 'ep-round-resonance-adiv96hj-pooler.c-2.us-east-1.aws.neon.tech')
-app.config['PORT'] = os.getenv('DBPORT', '5432')
+# ---------- DATABASE CONFIG ----------
+app.config["DB_NAME"] = os.getenv("DBNAME", "neondb")
+app.config["DB_USER"] = os.getenv("DBUSER", "neondb_owner")
+app.config["DB_PASSWORD"] = os.getenv("DBPASSWORD", "npg_amlCENp4dF7Q")
+app.config["DB_HOST"] = os.getenv("DBHOST", "ep-round-resonance-adiv96hj-pooler.c-2.us-east-1.aws.neon.tech")
+app.config["DB_PORT"] = os.getenv("DBPORT", "5432")
+
+# ---------- DATABASE CONNECTION ----------
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(
+            dbname=app.config["DB_NAME"],
+            user=app.config["DB_USER"],
+            password=app.config["DB_PASSWORD"],
+            host=app.config["DB_HOST"],
+            port=app.config["DB_PORT"],
+            sslmode="require"
+        )
+        return conn
+    except Exception as e:
+        current_app.logger.error(f"DB connection failed: {e}")
+        return None
 
 # ---------- DATABASE SETUP ----------
-def get_db_connection():
-    conn = psycopg2.connect(
-        dbname=app.config['DBNAME'],
-        user=app.config['USER'],
-        password=app.config['PASSWORD'],
-        host=app.config['HOST'],
-        port=app.config['PORT'],
-        sslmode="require"
-    )
-    return conn
+def init_db():
+    conn = get_db_connection()
+    if not conn:
+        print("Database connection failed.")
+        return
 
-with app.app_context():
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        # Ensure the notes table exists
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS notes (
-                id SERIAL PRIMARY KEY,
-                filename TEXT NOT NULL,
-                uploaded_by TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-
-        # Ensure the users table exists
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(255) UNIQUE NOT NULL,
-                email VARCHAR(255) UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                role VARCHAR(50) DEFAULT 'student',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP
-            )
-        ''')
-
-        # Seed default accounts
-        default_users = [
-            {"username": "teacher", "email": "teacher@example.com", "password": "pass", "role": "teacher"},
-            {"username": "student", "email": "student@example.com", "password": "pass", "role": "student"},
-            {"username": "admin", "email": "admin@example.com", "password": "adminpass", "role": "admin"}
-        ]
-        
-        for user in default_users:
-            cur.execute(
-                "SELECT 1 FROM users WHERE username = %s OR email = %s",
-                (user["username"], user["email"])
-            )
-            if not cur.fetchone():
-                cur.execute(
-                    "INSERT INTO users (username, email, password, role, created_at) "
-                    "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
-                    (user["username"], user["email"], user["password"], user["role"])
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS notes (
+                    id SERIAL PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    uploaded_by TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-
-        conn.commit()
-        cur.close()
-        conn.close()
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    role VARCHAR(50) DEFAULT 'student',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP
+                )
+            """)
+            # Seed default users
+            default_users = [
+                ("teacher", "teacher@example.com", "pass", "teacher"),
+                ("student", "student@example.com", "pass", "student"),
+                ("admin", "admin@example.com", "adminpass", "admin")
+            ]
+            for u in default_users:
+                cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (u[0], u[1]))
+                if not cur.fetchone():
+                    cur.execute(
+                        "INSERT INTO users (username, email, password, role, created_at) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                        u
+                    )
+            conn.commit()
     except Exception as e:
-        print(f"Error during database setup: {e}")
+        print(f"Error initializing DB: {e}")
+    finally:
+        conn.close()
+
+init_db()
 
 # ---------- ROUTES ----------
 
