@@ -5,6 +5,7 @@
 />
 
 <h2>Welcome, {{ session['username'] }}! 👋</h2>
+
 <p>You are logged in as <b>{{ role }}</b>.</p>
 
 <div class="cards">
@@ -25,4 +26,26 @@
     <p>See latest class and teacher updates.</p>
   </a>
 </div>
-{% endblock %}
+
+{% if session['role'] == 'admin' %}
+<h3>Admin Section</h3>
+<div class="cards">
+  <!-- Add Teacher Card -->
+  <a href="{{ url_for('add_teacher') }}" class="card">
+    <h3>Add Teacher</h3>
+    <p>Click below to add a new teacher to the system.</p>
+  </a>
+
+  <!-- Add Student Card -->
+  <a href="{{ url_for('add_student') }}" class="card">
+    <h3>Add Student</h3>
+    <p>Click below to add a new student to the system.</p>
+  </a>
+
+  <!-- View Users Card -->
+  <a href="{{ url_for('view_users') }}" class="card">
+    <h3>View User Details</h3>
+    <p>Click below to view all user details.</p>
+  </a>
+</div>
+{% endif %} {% endblock %}

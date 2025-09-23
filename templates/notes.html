@@ -78,7 +78,7 @@
     <p><small>Uploaded by: {{ note[2] }}</small></p>
 
     <!-- Delete button (only for teacher or uploader) -->
-    {% if role == "teacher" or note[2] == session['username'] %}
+    {% if role == "teacher" or "admin" or note[2] == session['username'] %}
     <form
       action="{{ url_for('delete_note', note_id=note[0]) }}"
       method="POST"

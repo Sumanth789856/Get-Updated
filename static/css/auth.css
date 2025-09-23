@@ -46,7 +46,7 @@ body {
   position: relative;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.02),
+    rgba(219, 45, 45, 0.02),
     rgba(255, 255, 255, 0.01)
   );
   border-radius: var(--radius);
@@ -302,6 +302,7 @@ body {
   background-clip: unset;
   background-clip: unset;
   background-clip: unset;
+  background-clip: unset;
   -webkit-text-fill-color: unset;
 }
 
@@ -316,7 +317,7 @@ body {
 }
 
 /* If you want the register form to also have the same badge style,
-   add class="auth-form register" to the register form element. */
+   add class="auth-form register" to the register form element. */  
 .auth-form.register {
   overflow: visible;
   padding-top: 54px;
@@ -335,6 +336,6 @@ body {
   font-size: 15px;
   box-shadow: 0 8px 20px rgba(2, 6, 23, 0.45);
   z-index: 10;
-  -webkit-background-clip: unset;
+  
   -webkit-text-fill-color: unset;
 }

@@ -1,9 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify, current_app
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify, current_app, flash
 import os
-import sqlite3
 from datetime import datetime
 from sqlalchemy import or_
 from dotenv import load_dotenv  # <-- NEW
+import psycopg2
+from psycopg2 import Error
+
 
 # ---------- LOAD ENV ----------
 load_dotenv()  
@@ -16,92 +18,78 @@ UPLOAD_FOLDER = "uploads"
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-DB_NAME = "database.db"
+
+# ---------- Connection parameters ----------
+app.config['DBNAME'] = os.getenv('DBNAME', 'neondb')
+app.config['USER'] = os.getenv('DBUSER', 'neondb_owner')
+app.config['PASSWORD'] = os.getenv('DBPASSWORD', 'npg_amlCENp4dF7Q')
+app.config['HOST'] = os.getenv('DBHOST', 'ep-round-resonance-adiv96hj-pooler.c-2.us-east-1.aws.neon.tech')
+app.config['PORT'] = os.getenv('DBPORT', '5432')
 
 # ---------- DATABASE SETUP ----------
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
+def get_db_connection():
+    conn = psycopg2.connect(
+        dbname=app.config['DBNAME'],
+        user=app.config['USER'],
+        password=app.config['PASSWORD'],
+        host=app.config['HOST'],
+        port=app.config['PORT'],
+        sslmode="require"
+    )
+    return conn
 
-    # canonical tables with improved schema and safe migrations
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            email TEXT UNIQUE,
-            password TEXT,
-            role TEXT DEFAULT 'student',
-            is_active INTEGER DEFAULT 1,
-            created_at TEXT,
-            last_login TEXT
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT,
-            title TEXT,
-            content TEXT,
-            uploaded_by TEXT,
-            created_at TEXT
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS announcements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT,
-            author TEXT,
-            date TEXT DEFAULT (datetime('now'))
-        )
-    ''')
-
-    # helper to safely add a missing column (SQLite supports ADD COLUMN)
-    def ensure_column(table, col_def):
-        colname = col_def.split()[0]
-        c.execute(f"PRAGMA table_info({table})")
-        existing = [r[1] for r in c.fetchall()]
-        if colname not in existing:
-            try:
-                c.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
-            except Exception:
-                # ignore migration error; keep silent in prod
-                pass
-
-    # ensure missing columns are added for older DBs
-    ensure_column('users', 'email TEXT')
-    ensure_column('users', 'is_active INTEGER DEFAULT 1')
-    ensure_column('users', 'created_at TEXT')
-    ensure_column('users', 'last_login TEXT')
-
-    ensure_column('notes', 'title TEXT')
-    ensure_column('notes', 'content TEXT')
-    ensure_column('notes', 'created_at TEXT')
-
-    # indexes for performance
-    c.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_notes_title ON notes(title)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_notes_filename ON notes(filename)")
-
-    # seed default accounts (safe)
+with app.app_context():
     try:
-        c.execute(
-            "INSERT OR IGNORE INTO users (username, email, password, role, created_at) VALUES (?,?,?,?,datetime('now'))",
-            ("teacher", "teacher@example.com", "pass", "teacher")
-        )
-        c.execute(
-            "INSERT OR IGNORE INTO users (username, email, password, role, created_at) VALUES (?,?,?,?,datetime('now'))",
-            ("student", "student@example.com", "pass", "student")
-        )
-    except Exception:
-        pass
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        # Ensure the notes table exists
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS notes (
+                id SERIAL PRIMARY KEY,
+                filename TEXT NOT NULL,
+                uploaded_by TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-init_db()
+        # Ensure the users table exists
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role VARCHAR(50) DEFAULT 'student',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        ''')
+
+        # Seed default accounts
+        default_users = [
+            {"username": "teacher", "email": "teacher@example.com", "password": "pass", "role": "teacher"},
+            {"username": "student", "email": "student@example.com", "password": "pass", "role": "student"},
+            {"username": "admin", "email": "admin@example.com", "password": "adminpass", "role": "admin"}
+        ]
+        
+        for user in default_users:
+            cur.execute(
+                "SELECT 1 FROM users WHERE username = %s OR email = %s",
+                (user["username"], user["email"])
+            )
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO users (username, email, password, role, created_at) "
+                    "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                    (user["username"], user["email"], user["password"], user["role"])
+                )
+
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error during database setup: {e}")
 
 # ---------- ROUTES ----------
 
@@ -118,33 +106,37 @@ def login():
         password = request.form.get("password", "")
 
         if not username or not email or not password:
-            return "Email, username and password are required!"
+            return "⚠️ Email, username and password are required!"
 
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        # require username + email + password to match
-        c.execute(
-            "SELECT id, username, email, password, role FROM users WHERE username=? AND email=? COLLATE NOCASE AND password=?",
-            (username, email, password),
-        )
-        user = c.fetchone()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            # require username + email + password to match
+            cur.execute(
+                "SELECT id, username, email, password, role FROM users "
+                "WHERE username ILIKE %s AND email ILIKE %s AND password=%s",
+                (username, email, password),
+            )
+            user = cur.fetchone()
 
-        if user:
-            # update last_login timestamp
-            try:
-                c.execute("UPDATE users SET last_login=? WHERE id=?",
-                          (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user[0]))
-                conn.commit()
-            except Exception:
-                pass
+            if user:
+                # update last_login timestamp
+                try:
+                    cur.execute("UPDATE users SET last_login=%s WHERE id=%s",
+                                (datetime.now(), user[0]))
+                    conn.commit()
+                except Exception:
+                    pass
+
+                session["username"] = user[1]
+                session["role"] = user[4]
+                return redirect(url_for("dashboard"))
+            else:
+                return "⚠️ Invalid credentials!"
+        except Error as e:
+            return f"⚠️ Database error: {str(e)}"
+        finally:
             conn.close()
-
-            session["username"] = user[1]
-            session["role"] = user[4]
-            return redirect(url_for("dashboard"))
-        else:
-            conn.close()
-            return "Invalid credentials!"
     return render_template("login.html", title="Login")
 
 # ---------- REGISTER ----------
@@ -159,21 +151,33 @@ def register():
         if not username or not password or not email:
             return "⚠️ Username, email and password are required!"
 
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE username=? OR email=?", (username, email))
-        if c.fetchone():
+        # Restrict teacher registration to admins only
+        if role == "teacher" and session.get("role") != "admin":
+            return "⚠️ Only admins can add teachers!"
+
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
+            if cur.fetchone():
+                return "⚠️ Username or email already taken!"
+
+            cur.execute(
+                "INSERT INTO users (username, email, password, role, created_at) "
+                "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                (username, email, password, role)
+            )
+            conn.commit()
+            return redirect(url_for("login"))
+        except Error as e:
+            return f"⚠️ Database error: {str(e)}"
+        finally:
             conn.close()
-            return "⚠️ Username or email already taken!"
-
-        c.execute("INSERT INTO users (username, email, password, role) VALUES (?,?,?,?)",
-                  (username, email, password, role))
-        conn.commit()
-        conn.close()
-
-        return redirect(url_for("login"))
 
     return render_template("register.html", title="Register")
+
+
 
 # ---------- LOGOUT ----------
 @app.route("/logout")
@@ -182,13 +186,13 @@ def logout():
     return redirect(url_for("index"))
 
 # ---------- DASHBOARD ----------
-@app.route("/dashboard")
+@app.route("/dashboard", methods=["GET"])
 def dashboard():
     if "username" not in session:
         return redirect(url_for("login"))
     return render_template("dashboard.html", title="Dashboard", role=session["role"])
 
-# ---------- NOTES ----------
+# ---------- NOTES
 @app.route("/notes", methods=["GET","POST"])
 def notes():
     if "username" not in session:
@@ -201,17 +205,17 @@ def notes():
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
             file.save(filepath)
 
-            conn = sqlite3.connect(DB_NAME)
+            conn = get_db_connection()
             c = conn.cursor()
-            c.execute("INSERT INTO notes (filename,uploaded_by) VALUES (?,?)",
+            c.execute("INSERT INTO notes (filename, uploaded_by) VALUES (%s, %s)",
                       (file.filename, session["username"]))
             conn.commit()
             conn.close()
 
     # Fetch all notes
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM notes")
+    c.execute("SELECT id, filename, uploaded_by, created_at FROM notes")
     files = c.fetchall()
     conn.close()
 
@@ -228,61 +232,100 @@ def delete_note(note_id):
     if "username" not in session:
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT filename, uploaded_by FROM notes WHERE id=?", (note_id,))
+    conn = get_db_connection()
+    c = conn.cursor()  # Fixed cursor call
+    c.execute("SELECT filename, uploaded_by FROM notes WHERE id=%s", (note_id,))  # Fixed placeholder
     note = c.fetchone()
 
     if note:
         filename, uploader = note
-        if session["role"] == "teacher" or session["username"] == uploader:
-            c.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        current_app.logger.info(f"Note found: {filename}, uploaded by: {uploader}")
+        if session["role"] in ["teacher", "admin"] or session["username"] == uploader:
+            c.execute("DELETE FROM notes WHERE id=%s", (note_id,))
             conn.commit()
+            current_app.logger.info(f"Note deleted: {filename}")
 
             # Delete file from uploads
             file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
             if os.path.exists(file_path):
                 os.remove(file_path)
-
+                current_app.logger.info(f"File removed: {file_path}")
+        else:
+            current_app.logger.warning("Unauthorized delete attempt")
+    else:
+        current_app.logger.warning("Note not found")
     conn.close()
     return redirect(url_for("notes"))
 
 # ---------- ANNOUNCEMENTS ----------
-@app.route("/announcements", methods=["GET","POST"])
+from psycopg2.extras import RealDictCursor
+
+@app.route("/announcements", methods=["GET", "POST"])
 def announcements():
     if "username" not in session:
         return redirect(url_for("login"))
 
-    if request.method == "POST" and session["role"] == "teacher":
+    if request.method == "POST":
         content = request.form.get("announcement")
         if content and content.strip():
-            conn = sqlite3.connect(DB_NAME)
-            c = conn.cursor()
-            c.execute("INSERT INTO announcements (content,author,date) VALUES (?,?,?)",
-                      (content.strip(), session["username"], datetime.now().strftime("%Y-%m-%d %H:%M")))
-            conn.commit()
-            conn.close()
-            return redirect(url_for("announcements"))
+            if session["role"] in ["student", "teacher", "admin"]:
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO announcements (content, author, date) "
+                        "VALUES (%s, %s, CURRENT_TIMESTAMP)",
+                        (content.strip(), session["username"])
+                    )
+                    conn.commit()
+                    conn.close()
+                    flash("✅ Announcement posted successfully!", "success")
+                    # 🔑 Redirect to avoid re-post on refresh
+                    return redirect(url_for("announcements"))
+                except Exception as e:
+                    flash(f"⚠️ Database error: {str(e)}", "error")
+            else:
+                flash("⚠️ You are not authorized to post announcements!", "error")
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT * FROM announcements ORDER BY id DESC")
-    announcements = c.fetchall()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, content, author, date FROM announcements ORDER BY id DESC")
+        announcements = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        announcements = []
+        flash(f"⚠️ Database error: {str(e)}", "error")
 
-    return render_template("announcements.html", title="Announcements",
-                           announcements=announcements, role=session["role"])
-
-# Delete announcement
+    return render_template(
+        "announcements.html",
+        title="Announcements",
+        announcements=announcements,
+        role=session["role"],
+        username=session["username"]
+    )
 @app.route("/delete_announcement/<int:ann_id>", methods=["POST"])
 def delete_announcement(ann_id):
-    if "username" in session and session["role"] == "teacher":
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("DELETE FROM announcements WHERE id=?", (ann_id,))
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    # Only teachers/admins allowed to delete
+    if session["role"] not in ["teacher", "admin"]:
+        flash("⚠️ You are not authorized to delete announcements!", "error")
+        return redirect(url_for("announcements"))
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM announcements WHERE id = %s", (ann_id,))
         conn.commit()
         conn.close()
+        flash("🗑️ Announcement deleted successfully!", "success")
+    except Exception as e:
+        flash(f"⚠️ Database error: {str(e)}", "error")
+
     return redirect(url_for("announcements"))
+
 
 # ---------- SEARCH ----------
 @app.route('/search')
@@ -292,26 +335,170 @@ def search_notes():
         return jsonify([])
 
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         c = conn.cursor()
         # search filename (case-insensitive)
         pattern = f"%{q}%"
-        c.execute("SELECT id, filename FROM notes WHERE filename LIKE ? COLLATE NOCASE LIMIT 12", (pattern,))
+        c.execute("SELECT id, filename, uploaded_by FROM notes WHERE filename ILIKE %s LIMIT 12", (pattern,))
         rows = c.fetchall()
         conn.close()
 
         results = [
             {
                 'id': r[0],
-                'title': r[1] or '',
-                'excerpt': r[1] or ''
+                'title': r[1],
+                'excerpt': f"Uploaded by: {r[2]}"
             }
             for r in rows
         ]
         return jsonify(results)
-    except Exception:
+    except Exception as e:
         current_app.logger.exception("Search error")
-        return jsonify({'error': 'server error'}), 500
+        return jsonify({'error': 'server error', 'details': str(e)}), 500
+
+# ---------- EDIT NOTE ----------
+@app.route("/edit_note/<int:note_id>", methods=["GET", "POST"])
+def edit_note(note_id):
+    if "username" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        new_title = request.form.get("title", "").strip()
+        new_content = request.form.get("content", "").strip()
+        if new_title and new_content:
+            c.execute("UPDATE notes SET title=%s, content=%s WHERE id=%s", (new_title, new_content, note_id))
+            conn.commit()
+            conn.close()
+            return redirect(url_for("notes"))
+
+    c.execute("SELECT * FROM notes WHERE id=%s", (note_id,))
+    note = c.fetchone()
+    conn.close()
+
+    return render_template("edit_note.html", title="Edit Note", note=note)
+
+@app.route("/admin/users", methods=["GET"])
+def admin_users():
+    if "username" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE role = 'admin'")
+    admins = c.fetchall()
+    conn.close()
+
+    return render_template("admin_users.html", title="Admin Users", admins=admins)
+
+# ---------- ADD TEACHER ----------
+@app.route("/admin/add_teacher", methods=["GET", "POST"])
+def add_teacher():
+    if "username" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if not username or not email or not password:
+            flash("⚠️ All fields are required!", "error")
+            return redirect(url_for("add_teacher"))
+
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE username=%s OR email=%s", (username, email))
+            if c.fetchone():
+                flash("⚠️ Username or email already exists!", "error")
+                conn.close()
+                return redirect(url_for("add_teacher"))
+
+            c.execute("INSERT INTO users (username, email, password, role, created_at) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                      (username, email, password, "teacher"))
+            conn.commit()
+            conn.close()
+
+            flash("✅ Teacher added successfully!", "success")
+            return redirect(url_for("dashboard"))
+        except Exception as e:
+            flash(f"⚠️ Database error: {str(e)}", "error")
+            return redirect(url_for("add_teacher"))
+
+    return render_template("add_teacher.html", title="Add Teacher")
+
+# ---------- ADD STUDENT ----------
+@app.route("/admin/add_student", methods=["GET", "POST"])
+def add_student():
+    if "username" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if not username or not email or not password:
+            flash("⚠️ All fields are required!", "error")
+            return redirect(url_for("add_student"))
+
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE username=%s OR email=%s", (username, email))
+            if c.fetchone():
+                flash("⚠️ Username or email already exists!", "error")
+                conn.close()
+                return redirect(url_for("add_student"))
+
+            c.execute("INSERT INTO users (username, email, password, role, created_at) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                      (username, email, password, "student"))
+            conn.commit()
+            conn.close()
+
+            flash("✅ Student added successfully!", "success")
+            return redirect(url_for("dashboard"))
+        except Exception as e:
+            flash(f"⚠️ Database error: {str(e)}", "error")
+            return redirect(url_for("add_student"))
+
+    return render_template("add_teacher.html", title="Add Student")
+
+# ---------- VIEW USERS ----------
+@app.route("/admin/view_users", methods=["GET"])
+def view_users():
+    if "username" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, username, email, role FROM users ORDER BY id ASC")
+    users = c.fetchall()
+    conn.close()
+
+    return render_template("view_users.html", title="View Users", users=users)
+
+# ---------- DELETE USER ----------
+@app.route("/admin/delete_user/<int:user_id>", methods=["POST"])
+def delete_user(user_id):
+    if "username" not in session or session["role"] != "admin":
+        return redirect(url_for("login"))
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        conn.commit()
+        conn.close()
+
+        flash("✅ User deleted successfully!", "success")
+    except Exception as e:
+        flash(f"⚠️ Database error: {str(e)}", "error")
+
+    return redirect(url_for("view_users"))
 
 # ---------- RUN ----------
 if __name__ == "__main__":
