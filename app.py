@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify, current_app, flash
 import os
 from datetime import datetime
-from sqlalchemy import or_
 from dotenv import load_dotenv  # <-- NEW
 import psycopg2
 from psycopg2 import Error
