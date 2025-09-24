@@ -4,6 +4,7 @@ from datetime import datetime
 from dotenv import load_dotenv  # <-- NEW
 import psycopg2
 from psycopg2 import Error
+from psycopg2.extras import RealDictCursor
 
 
 
@@ -258,7 +259,7 @@ def delete_note(note_id):
     return redirect(url_for("notes"))
 
 # ---------- ANNOUNCEMENTS ----------
-from psycopg2.extras import RealDictCursor
+
 
 @app.route("/announcements", methods=["GET", "POST"])
 def announcements():
