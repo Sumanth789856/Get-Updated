@@ -1,0 +1,59 @@
+{% extends "layout.html" %} {% block content %}
+<link
+  rel="stylesheet"
+  href="{{ url_for('static', filename='css/auth.css') }}"
+/>
+<div class="auth-container">
+  <form method="POST" class="auth-form login" aria-label="Add Teacher form">
+    <h2>Add Student Page</h2>
+    <input
+      type="text"
+      name="username"
+      placeholder="Username"
+      required
+      autocomplete="username"
+    />
+    <input
+      type="email"
+      name="email"
+      placeholder="Email"
+      required
+      autocomplete="email"
+    />
+    <input
+      type="password"
+      name="password"
+      placeholder="Password"
+      required
+      autocomplete="new-password"
+    />
+    <button type="submit" class="auth-btn">Submit Student Details</button>
+  </form>
+</div>
+<div class="modal-overlay" id="successModal">
+  <div class="modal">
+    <h3>Student successfully added!</h3>
+    <button id="closeModal">Close</button>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  const form = document.querySelector(".auth-form");
+  const modal = document.getElementById("successModal");
+  const closeModal = document.getElementById("closeModal");
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault(); // Prevent default form submission
+
+    // Show the modal
+    modal.classList.add("active");
+
+    // Optionally, submit the form after showing the modal
+    // event.target.submit();
+  });
+
+  closeModal.addEventListener("click", function () {
+    modal.classList.remove("active");
+  });
+</script>
+{% endblock %}

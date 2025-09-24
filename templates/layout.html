@@ -18,6 +18,8 @@
       <a href="{{ url_for('notes') }}">📚 Notes</a>
       <a href="{{ url_for('announcements') }}">📢 Announcements</a>
       {% if 'username' in session %}
+
+      <a href="{{ url_for('profile') }}">👤 Profile</a>
       <a href="{{ url_for('logout') }}">🚪 Logout</a>
       {% else %}
       <a href="{{ url_for('login') }}">🔑 Login</a>

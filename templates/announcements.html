@@ -35,7 +35,7 @@
         }}</small
       >
     </p>
-    {% if announcement["author"] == username or role in ["teacher", "admin"] %}
+    {% if announcement["author"] == username or role in ["teacher", "admin" ] %}
     <form
       method="POST"
       action="{{ url_for('delete_announcement', ann_id=announcement['id']) }}"

@@ -6,7 +6,9 @@ CREATE TABLE users (
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('admin', 'teacher', 'student'))
+    role TEXT NOT NULL CHECK(role IN ('admin', 'teacher', 'student')),
+    gender TEXT CHECK(gender IN ('male', 'female', 'other')),
+    profile_image TEXT
 );
 
 -- Table: announcements

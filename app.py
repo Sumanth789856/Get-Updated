@@ -5,6 +5,9 @@ from dotenv import load_dotenv  # <-- NEW
 import psycopg2
 from psycopg2 import Error
 from psycopg2.extras import RealDictCursor
+from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash, generate_password_hash
+import time
 
 
 
@@ -17,8 +20,16 @@ app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 
 # ---------- CONFIG ----------
 UPLOAD_FOLDER = "uploads"
+PROFILE_IMAGES_FOLDER = os.path.join("static", "profile_images")
+
+# Ensure directories exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PROFILE_IMAGES_FOLDER, exist_ok=True)
+
+# Set Flask configuration
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["PROFILE_IMAGES_FOLDER"] = PROFILE_IMAGES_FOLDER
+
 
 # ---------- DATABASE CONFIG ----------
 app.config["DB_NAME"] = os.getenv("DBNAME", "neondb")
@@ -28,6 +39,43 @@ app.config["DB_HOST"] = os.getenv("DBHOST", "ep-round-resonance-adiv96hj-pooler.
 app.config["DB_PORT"] = os.getenv("DBPORT", "5432")
 
 # ---------- DATABASE CONNECTION ----------
+def init_db():
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Check if gender column exists
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' AND column_name = 'gender'
+        """)
+        
+        if not cur.fetchone():
+            # Add new columns
+            cur.execute("""
+                ALTER TABLE users 
+                ADD COLUMN IF NOT EXISTS gender TEXT 
+                CHECK(gender IN ('male', 'female', 'other'))
+            """)
+            cur.execute("""
+                ALTER TABLE users 
+                ADD COLUMN IF NOT EXISTS profile_image TEXT
+            """)
+            conn.commit()
+            print("Database schema updated successfully!")
+            
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 def get_db_connection():
     try:
         conn = psycopg2.connect(
@@ -67,6 +115,8 @@ def init_db():
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password TEXT NOT NULL,
                     role VARCHAR(50) DEFAULT 'student',
+                    profile_image TEXT,
+                    gender VARCHAR(10),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP
                 )
@@ -193,7 +243,183 @@ def dashboard():
         return redirect(url_for("login"))
     return render_template("dashboard.html", title="Dashboard", role=session["role"])
 
-# ---------- NOTES
+# ---------- PROFILE ----------
+@app.route("/profile", methods=["GET", "POST"])
+def profile():
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            email = request.form.get("email", "").strip()
+            new_password = request.form.get("new_password", "").strip()
+            confirm_password = request.form.get("confirm_password", "").strip()
+            gender = request.form.get("gender", "").strip()
+
+            # Verify the user exists
+            cur.execute("SELECT username FROM users WHERE username = %s", (session["username"],))
+            user_data = cur.fetchone()
+            if not user_data:
+                flash("⚠️ User not found!", "error")
+                return redirect(url_for("logout"))
+
+            updates = []
+            values = []
+
+            # Username & Email update
+            if username and email:
+                cur.execute(
+                    "SELECT 1 FROM users WHERE (username = %s OR email = %s) AND username != %s",
+                    (username, email, session["username"])
+                )
+                if cur.fetchone():
+                    flash("⚠️ Username or email already taken!", "error")
+                    return redirect(url_for("profile"))
+
+                updates.extend(["username = %s", "email = %s"])
+                values.extend([username, email])
+
+            # Password update
+            current_password = request.form.get("current_password", "").strip()
+            if new_password:
+                # Check if current password is provided
+                if not current_password:
+                    flash("⚠️ Current password is required to change password!", "error")
+                    return redirect(url_for("profile"))
+
+                # Verify current password
+                cur.execute("SELECT password FROM users WHERE username = %s", (session["username"],))
+                stored_password = cur.fetchone()["password"]
+                
+                if current_password != stored_password:
+                    flash("⚠️ Current password is incorrect!", "error")
+                    return redirect(url_for("profile"))
+
+                # Check if new password matches confirmation
+                if new_password != confirm_password:
+                    flash("⚠️ New passwords do not match!", "error")
+                    return redirect(url_for("profile"))
+
+                # Validate password requirements
+                if len(new_password) < 8:
+                    flash("⚠️ Password must be at least 8 characters long!", "error")
+                    return redirect(url_for("profile"))
+
+                # Store the plain text password
+                updates.append("password = %s")
+                values.append(new_password)
+
+            # Gender update
+            if gender:
+                updates.append("gender = %s")
+                values.append(gender)
+
+            # Apply updates if any
+            if updates:
+                query = "UPDATE users SET " + ", ".join(updates) + " WHERE username = %s"
+                values.append(session["username"])
+                cur.execute(query, tuple(values))
+                conn.commit()
+
+                # Update session username if changed
+                if "username = %s" in updates:
+                    session["username"] = username
+
+                flash("✅ Profile updated successfully!", "success")
+
+            return redirect(url_for("profile"))
+
+        # GET request
+        cur.execute("""
+            SELECT username, email, role, gender, profile_image
+            FROM users
+            WHERE username = %s
+        """, (session["username"],))
+        user_data = cur.fetchone()
+
+        if not user_data:
+            flash("⚠️ User not found!", "error")
+            return redirect(url_for("logout"))
+
+        return render_template("profile.html", title="Profile", user_data=user_data)
+
+    except Exception as e:
+        flash(f"⚠️ An error occurred: {str(e)}", "error")
+        return redirect(url_for("dashboard"))
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------- PROFILE PICTURE UPLOAD ----------
+@app.route("/upload_profile_picture", methods=["POST"])
+def upload_profile_picture():
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    if "profile_picture" not in request.files:
+        flash("⚠️ No file selected!", "error")
+        return redirect(url_for("profile"))
+
+    file = request.files["profile_picture"]
+    if not file or not file.filename:
+        flash("⚠️ No file selected!", "error")
+        return redirect(url_for("profile"))
+
+    try:
+        # Secure the filename and ensure it's an image
+        filename = secure_filename(file.filename)
+        if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+            flash("⚠️ Only image files are allowed!", "error")
+            return redirect(url_for("profile"))
+
+        # Create unique filename
+        ext = os.path.splitext(filename)[1]
+        new_filename = f"{session['username']}_{int(time.time())}{ext}"
+        filepath = os.path.join(app.config["PROFILE_IMAGES_FOLDER"], new_filename)
+
+        # Save the file
+        file.save(filepath)
+
+        # Update database
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Get old profile image
+        cur.execute("SELECT profile_image FROM users WHERE username = %s", (session["username"],))
+        row = cur.fetchone()
+        old_image = row["profile_image"] if row else None
+
+        # Update new image in DB
+        cur.execute("UPDATE users SET profile_image = %s WHERE username = %s",
+                    (new_filename, session["username"]))
+        conn.commit()
+
+        # Delete old profile image if not default
+        if old_image and old_image != 'default.png':
+            old_path = os.path.join(app.config["PROFILE_IMAGES_FOLDER"], old_image)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+
+        flash("✅ Profile picture updated successfully!", "success")
+
+    except Exception as e:
+        flash(f"⚠️ An error occurred: {str(e)}", "error")
+
+    finally:
+        cur.close()
+        conn.close()
+
+    return redirect(url_for("profile"))
+
+
+
+# ---------- NOTES----------------#
 @app.route("/notes", methods=["GET","POST"])
 def notes():
     if "username" not in session:
@@ -310,18 +536,30 @@ def delete_announcement(ann_id):
     if "username" not in session:
         return redirect(url_for("login"))
 
-    # Only teachers/admins allowed to delete
-    if session["role"] not in ["teacher", "admin"]:
-        flash("⚠️ You are not authorized to delete announcements!", "error")
-        return redirect(url_for("announcements"))
-
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("DELETE FROM announcements WHERE id = %s", (ann_id,))
-        conn.commit()
-        conn.close()
-        flash("🗑️ Announcement deleted successfully!", "success")
+        
+        # Check if the announcement exists and get its author
+        cur.execute("SELECT author FROM announcements WHERE id = %s", (ann_id,))
+        result = cur.fetchone()
+        
+        if not result:
+            flash("⚠️ Announcement not found!", "error")
+            conn.close()
+            return redirect(url_for("announcements"))
+            
+        author = result[0]
+        
+        # Allow deletion if user is admin/teacher or if they're the author
+        if session["role"] in ["teacher", "admin"] or (session["username"] == author):
+            cur.execute("DELETE FROM announcements WHERE id = %s", (ann_id,))
+            conn.commit()
+            conn.close()
+            flash("🗑️ Announcement deleted successfully!", "success")
+        else:
+            conn.close()
+            flash("⚠️ You are not authorized to delete this announcement!", "error")
     except Exception as e:
         flash(f"⚠️ Database error: {str(e)}", "error")
 
@@ -466,7 +704,7 @@ def add_student():
             flash(f"⚠️ Database error: {str(e)}", "error")
             return redirect(url_for("add_student"))
 
-    return render_template("add_teacher.html", title="Add Student")
+    return render_template("add_student.html", title="Add Student")
 
 # ---------- VIEW USERS ----------
 @app.route("/admin/view_users", methods=["GET"])
@@ -503,4 +741,6 @@ def delete_user(user_id):
 
 # ---------- RUN ----------
 if __name__ == "__main__":
+    # Initialize database before starting the app
+    init_db()
     app.run(debug=True)
